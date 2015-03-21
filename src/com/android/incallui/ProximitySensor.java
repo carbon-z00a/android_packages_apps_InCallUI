@@ -49,6 +49,7 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     private boolean mUiShowing = false;
     private boolean mHasIncomingCall = false;
     private boolean mIsPhoneOffhook = false;
+    private boolean hasOngoingCall = false;
     private boolean mDialpadVisible;
     private Context mContext;
 
@@ -89,7 +90,7 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
         // We ignore incoming state because we do not want to enable proximity
         // sensor during incoming call screen. We check hasLiveCall() because a disconnected call
         // can also put the in-call screen in the INCALL state.
-        boolean hasOngoingCall = InCallState.INCALL == newState && callList.hasLiveCall();
+        hasOngoingCall = InCallState.INCALL == newState && callList.hasLiveCall();
         boolean isOffhook = (InCallState.OUTGOING == newState) || hasOngoingCall;
         mHasIncomingCall = (InCallState.INCOMING == newState);
 
@@ -202,13 +203,19 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
                     (mOrientation == AccelerometerListener.ORIENTATION_HORIZONTAL);
             screenOnImmediately |= !mUiShowing && horizontal;
 
+            // Turn screen on when call comes in and prevent accidental wake-up is off.
+            final boolean mProximityWakeEnabled =
+                Settings.System.getInt(mContext.getContentResolver(),
+                    Settings.System.PROXIMITY_ON_WAKE, 0) == 1;
+            screenOnImmediately |= !mProximityWakeEnabled && mHasIncomingCall;
+
             // We do not keep the screen off when dialpad is visible, we are horizontal, and
             // the in-call screen is being shown.
             // At that moment we're pretty sure users want to use it, instead of letting the
             // proximity sensor turn off the screen by their hands.
             screenOnImmediately |= mDialpadVisible && horizontal;
 
-            Log.v(this, "screenonImmediately: ", screenOnImmediately);
+            Log.v(this, "screenOnImmediately: ", screenOnImmediately);
 
             Log.i(this, Objects.toStringHelper(this)
                     .add("keybrd", mIsHardKeyboardOpen ? 1 : 0)
@@ -217,6 +224,7 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
                     .add("hor", horizontal ? 1 : 0)
                     .add("ui", mUiShowing ? 1 : 0)
                     .add("aud", AudioState.audioRouteToString(audioMode))
+                    .add("proxywake", mProximityWakeEnabled ? 1 : 0)
                     .toString());
 
             if ((mIsPhoneOffhook || mHasIncomingCall) && !screenOnImmediately) {
